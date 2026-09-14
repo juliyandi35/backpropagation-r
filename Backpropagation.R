@@ -1,0 +1,89 @@
+set.seed(500)
+#Library yang dipakai
+library(neuralnet)
+library(caret)
+library(readxl)
+library(forecast)
+library(ggplot2)
+
+#input data
+data <- read_excel('DATA IHSG.xlsx')
+View(data)
+data$Terakhir <- as.numeric(data$Terakhir)
+str(data)
+data
+
+#pembagian data
+index <- sample(1:nrow(data), round(0.80*nrow(data)))
+train <- data[index,]
+test <- data[-index,]
+
+#model jaringan syaraf tiruan dengan neuron = 3
+nn <- neuralnet(Terakhir ~ Pembukaan + Terendah + Tertinggi, data = train, hidden = c(3,2), linear.output = TRUE)
+#Melihat struktur jaringan
+plot(nn)
+
+#Klasifikasi
+pred <- predict(nn, test)
+View(pred)
+Pred <- as.vector(pred)
+Prediksi <- as.vector(apply(pred, 1, which.max))
+Prediksi
+
+#Hasil Klasifikasi NN
+HasilNN <- compute(nn, test)
+HasilNN<-as.vector(HasilNN$net.result)
+
+#Ubah kembali data test ke numerik untuk menghitung MAPE dan MSE 
+test$Terakhir <- as.numeric(test$Terakhir)
+
+#Hasil Forecasting 
+HasilForecast <- forecast(test$Terakhir, h = 10)
+HasilForecastUpper<-as.vector(c(test$Terakhir,HasilForecast$upper[,1]))
+HasilForecastLower<-as.vector(c(test$Terakhir,HasilForecast$lower[,1]))
+average_vectors <- function(v1, v2) {
+  result <- numeric(length(v1))
+  for (i in seq_along(v1)) {
+    avg <- (v1[i] + v2[i]) / 2
+    result[i] <- avg
+  }
+  return(result)
+}
+Average<-average_vectors(HasilForecast$upper[,1],HasilForecast$lower[,1])
+
+HasilForecastAverage<-as.vector(c(test$Terakhir,Average))
+
+#Nilai MAPE dan MSE
+MAPE <- function(x,y){
+  n <- mean((abs(x-y)/x))*100
+  print(n)
+}
+MAPE(test$Terakhir, HasilNN)
+
+MSE <- function(x,y){
+  M <- mean((x-y)^2)
+  return(M)
+}
+MSE(test$Terakhir, HasilNN)
+
+
+# Buat data frame untuk plot point pada data aktual
+point_data <- data.frame(aktual = test$Terakhir[1:10], predicted = HasilForecastUpper[1:10], index = 1:10)
+
+# Buat data frame untuk plot line pada data upper
+line_data_upper <- data.frame(aktual = test$Terakhir[1:20], predicted = HasilForecastUpper[1:20], index = 1:20)
+line_data_lower <- data.frame(aktual = test$Terakhir[1:20], predicted = HasilForecastLower[1:20], index = 1:20)
+line_data_average <- data.frame(aktual = test$Terakhir[1:20], predicted = HasilForecastAverage[1:20], index = 1:20)
+# Plot keseluruhan datanya
+ggplot(line_data_upper, aes(x = index, y = aktual, color = "Actual")) +
+  geom_point(aes(y = aktual, color = "Actual"), data = point_data) +
+  geom_line(aes(y = predicted, color = "Predicted")) +
+  labs(x = "Observation", y = "Value", title = "Actual vs Predicted Upper Values")
+ggplot(line_data_lower, aes(x = index, y = aktual, color = "Actual")) +
+  geom_point(aes(y = aktual, color = "Actual"), data = point_data) +
+  geom_line(aes(y = predicted, color = "Predicted")) +
+  labs(x = "Observation", y = "Value", title = "Actual vs Predicted Lower Values")
+ggplot(line_data_average, aes(x = index, y = aktual, color = "Actual")) +
+  geom_point(aes(y = aktual, color = "Actual"), data = point_data) +
+  geom_line(aes(y = predicted, color = "Predicted")) +
+  labs(x = "Observation", y = "Value", title = "Actual vs Predicted Average Values")
